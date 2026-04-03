@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unveiling Operating System Security</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config={theme:{extend:{colors:{cyber:{blue:'#00f3ff',purple:'#bc13fe',red:'#ff2a2a',dark:'#050505'}},fontFamily:{display:['Orbitron','sans-serif'],body:['Rajdhani','sans-serif'],mono:['Share Tech Mono','monospace']}}}}
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{overflow:hidden;background:#050505;color:#fff;font-family:'Rajdhani',sans-serif}
+        .hidden{display:none!important}
+        .loading-screen{position:fixed;inset:0;background:#050505;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .6s,visibility .6s}
+        .loading-screen.done{opacity:0;visibility:hidden;pointer-events:none}
+        .ld-bar{width:280px;height:3px;background:rgba(255,255,255,.06);margin-top:2rem;border-radius:2px;overflow:hidden}
+        .ld-bar-in{height:100%;width:0;background:linear-gradient(90deg,#00f3ff,#bc13fe);box-shadow:0 0 16px #00f3ff;animation:ld-fill 2s ease-in-out forwards}
+        @keyframes ld-fill{to{width:100%}}
+        .scanlines{position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.035) 2px,rgba(0,0,0,.035) 4px);pointer-events:none;z-index:90}
+        .mouse-glow{position:fixed;width:450px;height:450px;border-radius:50%;pointer-events:none;z-index:1;transform:translate(-50%,-50%);transition:background .6s}
+        .mouse-glow.blue{background:radial-gradient(circle,rgba(0,243,255,.08) 0%,transparent 70%)}
+        .mouse-glow.purple{background:radial-gradient(circle,rgba(188,19,254,.08) 0%,transparent 70%)}
+        .mouse-glow.red{background:radial-gradient(circle,rgba(255,42,42,.08) 0%,transparent 70%)}
+        .glitch{position:relative;display:inline-block}
+        .glitch::before,.glitch::after{content:attr(data-text);position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+        .glitch::before{animation:g1 4s infinite linear alternate-reverse;clip-path:polygon(0 0,100% 0,100% 35%,0 35%);color:#00f3ff}
+        .glitch::after{animation:g2 4s infinite linear alternate-reverse;clip-path:polygon(0 65%,100% 65%,100% 100%,0 100%);color:#bc13fe}
+        @keyframes g1{0%,93%{transform:translate(0)}94%{transform:translate(-5px,2px)}96%{transform:translate(5px,-2px)}98%{transform:translate(-3px,0)}100%{transform:translate(0)}}
+        @keyframes g2{0%,91%{transform:translate(0)}92%{transform:translate(4px,-2px)}95%{transform:translate(-4px,2px)}98%{transform:translate(2px,0)}100%{transform:translate(0)}}
+        .scan-line{position:fixed;left:0;right:0;height:4px;z-index:200;opacity:0;pointer-events:none}
+        .scan-line.blue{background:#00f3ff;box-shadow:0 0 30px #00f3ff,0 0 80px rgba(0,243,255,.4)}
+        .scan-line.purple{background:#bc13fe;box-shadow:0 0 30px #bc13fe,0 0 80px rgba(188,19,254,.4)}
+        .scan-line.red{background:#ff2a2a;box-shadow:0 0 30px #ff2a2a,0 0 80px rgba(255,42,42,.4)}
+        .scan-line.active{animation:scan-sw .5s ease-out}
+        @keyframes scan-sw{0%{top:0;opacity:1}100%{top:100%;opacity:0}}
+        .glass-panel{background:rgba(10,10,18,.7);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);box-shadow:0 8px 40px rgba(0,0,0,.5);transition:all .3s}
+        .glass-panel:hover{border-color:rgba(255,255,255,.22);box-shadow:0 0 25px rgba(0,243,255,.07)}
+        .grad-border{position:relative;border-radius:16px;overflow:hidden;z-index:0}
+        .grad-border::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:conic-gradient(from 0deg,#00f3ff,#bc13fe,#ff2a2a,#00f3ff);animation:spin-bdr 6s linear infinite;z-index:-2}
+        .grad-border::after{content:'';position:absolute;inset:2px;background:rgba(10,10,18,.92);border-radius:14px;z-index:-1}
+        @keyframes spin-bdr{to{transform:rotate(360deg)}}
+        .tilt-card{transform-style:preserve-3d;transition:transform .15s ease-out,box-shadow .3s}
+        #slider-container{position:absolute;inset:0;overflow:hidden}
+        .slide{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .55s cubic-bezier(.4,0,.2,1),transform .55s cubic-bezier(.4,0,.2,1);transform:scale(.97) translateY(12px);display:flex;align-items:center;justify-content:center;padding:1.5rem;z-index:1}
+        .slide.active{opacity:1;visibility:visible;transform:scale(1) translateY(0);z-index:10}
+        .slide-content{width:100%;max-width:1200px;height:90vh;display:flex;flex-direction:column;justify-content:center;font-weight:700}
+        #canvas-container{position:fixed;inset:0;z-index:0;pointer-events:none}
+        .side-nav{position:fixed;right:1rem;top:50%;transform:translateY(-50%);z-index:50;display:flex;flex-direction:column;gap:3px}
+        .side-nav .dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.12);cursor:pointer;transition:all .3s}
+        .side-nav .dot.active{background:#00f3ff;box-shadow:0 0 10px #00f3ff;transform:scale(1.6)}
+        .side-nav .dot:hover{background:rgba(0,243,255,.5)}
+        .side-nav .dot.sec{width:9px;height:9px;margin-top:4px}
+        .controls{position:fixed;bottom:2rem;left:2rem;right:2rem;z-index:50;display:flex;justify-content:space-between;pointer-events:none}
+        .nav-btn{background:rgba(0,243,255,.08);border:1px solid rgba(0,243,255,.4);color:#00f3ff;padding:.8rem 2.2rem;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;transition:all .3s;clip-path:polygon(8% 0,100% 0,100% 70%,92% 100%,0 100%,0 30%);text-transform:uppercase;letter-spacing:3px;pointer-events:auto;font-size:.8rem}
+        .nav-btn:hover{background:#00f3ff;color:#000;box-shadow:0 0 30px rgba(0,243,255,.5)}
+        .progress-container{position:fixed;bottom:0;left:0;width:100%;height:4px;background:rgba(255,255,255,.06);z-index:50}
+        .progress-bar{height:100%;background:linear-gradient(90deg,#00f3ff,#bc13fe);width:0%;transition:width .5s;box-shadow:0 0 12px rgba(0,243,255,.5)}
+        .tg-blue{text-shadow:0 0 16px rgba(0,243,255,.5)}
+        .tg-purple{text-shadow:0 0 16px rgba(188,19,254,.5)}
+        .tg-red{text-shadow:0 0 16px rgba(255,42,42,.5)}
+        .sim-panel{background:rgba(0,0,0,.7);border:1px solid rgba(0,243,255,.12);border-radius:12px;overflow:hidden;position:relative;transition:border-color .3s}
+        .sim-panel::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,#00f3ff,transparent)}
+        .sim-btn{background:rgba(0,243,255,.1);border:1px solid rgba(0,243,255,.3);color:#00f3ff;padding:.5rem 1.2rem;font-family:'Orbitron',sans-serif;font-size:.65rem;cursor:pointer;transition:all .2s;border-radius:4px;text-transform:uppercase;letter-spacing:1px}
+        .sim-btn:hover{background:#00f3ff;color:#000;box-shadow:0 0 18px rgba(0,243,255,.4)}
+        .sim-btn:disabled{opacity:.3;cursor:not-allowed;pointer-events:none}
+        .sim-btn.danger{border-color:rgba(255,42,42,.4);color:#ff2a2a;background:rgba(255,42,42,.1)}
+        .sim-btn.danger:hover{background:#ff2a2a;color:#000;box-shadow:0 0 18px rgba(255,42,42,.4)}
+        .sim-btn.green{border-color:rgba(16,185,129,.4);color:#10b981;background:rgba(16,185,129,.1)}
+        .sim-btn.green:hover{background:#10b981;color:#000;box-shadow:0 0 18px rgba(16,185,129,.4)}
+        .fw-scene{position:relative;width:100%;height:220px;border:1px solid #222;background:rgba(0,0,0,.6);border-radius:8px;overflow:hidden;display:flex;align-items:center}
+        .fw-wall{position:absolute;left:50%;top:0;bottom:0;width:4px;background:#00f3ff;box-shadow:0 0 25px #00f3ff,0 0 50px rgba(0,243,255,.3);z-index:2;transform:translateX(-50%)}
+        .fw-wall::after{content:"FIREWALL";position:absolute;top:-24px;left:50%;transform:translateX(-50%);color:#00f3ff;font-family:'Orbitron';font-size:.6rem;letter-spacing:3px}
+        .fw-packet{position:absolute;width:12px;height:12px;border-radius:50%;z-index:1}
+        .quiz-option{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);padding:1.2rem 1.5rem;margin-bottom:.7rem;cursor:pointer;transition:all .25s;border-radius:10px;display:flex;align-items:center;font-size:1.15rem;color:#ccc;position:relative}
+        .quiz-option:hover{background:rgba(255,255,255,.07);border-color:#00f3ff;transform:translateX(8px)}
+        .quiz-option.correct{border-color:#10b981!important;background:rgba(16,185,129,.15)!important;color:#fff!important;font-weight:700!important;box-shadow:0 0 20px rgba(16,185,129,.15);transform:none!important}
+        .quiz-option.correct::after{content:'\2713';position:absolute;right:20px;color:#10b981;font-weight:900;font-size:1.5rem}
+        .quiz-option.wrong{border-color:#ef4444!important;background:rgba(239,68,68,.15)!important;color:#ef4444!important;transform:none!important}
+        .quiz-option.wrong::after{content:'\2715';position:absolute;right:20px;color:#ef4444;font-weight:900;font-size:1.5rem}
+        .score-badge{background:linear-gradient(135deg,rgba(0,243,255,.15),rgba(188,19,254,.15));border:1px solid rgba(0,243,255,.3);padding:.5rem 1.5rem;border-radius:24px;font-family:'Orbitron';font-size:.85rem;letter-spacing:2px}
+        .typing-cursor::after{content:'_';animation:blink-cur .8s infinite;color:#00f3ff}
+        @keyframes blink-cur{0%,100%{opacity:1}50%{opacity:0}}
+        .hex-rain{position:absolute;inset:0;overflow:hidden;pointer-events:none;opacity:.04}
+        .hex-col{position:absolute;top:0;font-family:'Share Tech Mono';font-size:11px;color:#00f3ff;writing-mode:vertical-lr;animation:hex-fall linear infinite}
+        @keyframes hex-fall{0%{transform:translateY(-100%)}100%{transform:translateY(200vh)}}
+        .strength-bar{height:8px;border-radius:4px;transition:all .4s ease;overflow:hidden}
+        .pw-input{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:#fff;font-family:'Share Tech Mono',monospace;font-size:1.25rem;padding:.6rem 1rem;border-radius:6px;outline:none;width:100%;transition:border-color .3s}
+        .pw-input:focus{border-color:#00f3ff;box-shadow:0 0 10px rgba(0,243,255,.2)}
+        .pw-input::placeholder{color:rgba(255,255,255,.2)}
+        .slide-content .text-sm{font-size:1.05rem!important}
+        .slide-content .text-xs{font-size:.95rem!important}
+        .slide-content .text-base{font-size:1.2rem!important}
+        @keyframes aslr-shield{0%{box-shadow:0 0 0 rgba(16,185,129,0)}50%{box-shadow:0 0 40px rgba(16,185,129,.4)}100%{box-shadow:0 0 20px rgba(16,185,129,.15)}}
+        .aslr-shield-anim{animation:aslr-shield .6s ease-out forwards}
+        @keyframes warn-pop{0%{opacity:0;transform:scale(.85) translateY(10px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+        @keyframes warn-shake{0%,100%{transform:translateX(0)}10%,50%,90%{transform:translateX(-4px)}30%,70%{transform:translateX(4px)}}
+        .warn-box{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px;animation:warn-pop .3s ease-out}
+        .warn-box-inner{border:2px solid #eab308;background:rgba(234,179,8,.08);border-radius:12px;padding:1.5rem 2.5rem;max-width:440px;text-align:center;animation:warn-shake .5s ease-in-out;box-shadow:0 0 30px rgba(234,179,8,.15)}
+        @keyframes arrow-flow{0%{stroke-dashoffset:20}100%{stroke-dashoffset:0}}
+        .arrow-line{stroke-dasharray:4 3;animation:arrow-flow 1.2s linear infinite}
+        @media(max-width:768px){.side-nav{display:none}.controls{bottom:1rem;left:1rem;right:1rem}.nav-btn{padding:.5rem 1rem;font-size:.6rem;letter-spacing:1px}.slide{padding:1rem}.kernel-arrows{display:none}}
+    </style>
+</head>
+<body>
+
+<div class="loading-screen" id="loading-screen">
+    <div class="font-display text-3xl tracking-[.3em] text-cyber-blue tg-blue">INITIALIZING</div>
+    <div class="text-gray-500 text-lg mt-3 font-mono">SECURITY MODULE v2.0</div>
+    <div class="ld-bar"><div class="ld-bar-in"></div></div>
+</div>
+<div class="scanlines"></div>
+<div class="mouse-glow blue" id="mouseGlow"></div>
+<div class="scan-line blue" id="scanLine"></div>
+<div id="canvas-container"></div>
+<div class="side-nav" id="sideNav"></div>
+<div id="slider-container">
+
+    <!-- S0: TITLE -->
+    <div class="slide active" data-color="blue" data-section="intro">
+        <div class="slide-content text-center justify-center">
+            <div class="hex-rain" id="hexRain"></div>
+            <div class="relative z-10">
+                <div class="mb-8 inline-block border border-cyber-blue/20 bg-cyber-blue/5 px-6 py-2 rounded-full text-cyber-blue tracking-[.3em] text-sm font-bold font-display animate-pulse">SYSTEM ARCHITECTURE MODULE</div>
+                <h1 class="font-display text-6xl md:text-8xl lg:text-9xl font-black mb-8 leading-[1.05] text-white">UNVEILING<br><span class="glitch text-transparent bg-clip-text bg-gradient-to-r from-cyber-blue via-cyber-purple to-cyber-blue tg-blue" data-text="OPERATING SYSTEM">OPERATING SYSTEM</span><br><span class="text-transparent bg-clip-text bg-gradient-to-r from-cyber-purple to-cyber-red tg-purple">SECURITY</span></h1>
+                <p class="text-2xl md:text-3xl text-gray-300 max-w-2xl mx-auto leading-relaxed typing-cursor">Defending digital frontiers through layered protection mechanisms</p>
+                <div class="mt-16 flex justify-center items-center gap-4 text-gray-500 text-lg font-mono"><span>SCROLL TO BEGIN</span><svg class="w-6 h-6 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S1: FOUNDATION -->
+    <div class="slide" data-color="blue" data-section="basics">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-2 border-l-4 border-cyber-blue pl-5">THE FOUNDATION</h2>
+            <p class="text-gray-400 mb-10 pl-5 text-lg">What is OS Security and Why Does it Matter?</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="glass-panel p-10 rounded-xl tilt-card"><h3 class="text-cyber-blue font-bold text-2xl mb-5 flex items-center gap-4"><span class="text-4xl">&#x1f6e1;</span> Crucial Protection</h3><p class="text-gray-200 text-xl leading-relaxed">OS security is the bedrock of digital safety. It dictates how hardware and software interact, ensuring malicious actors cannot compromise the core integrity of the machine.</p></div>
+                <div class="glass-panel p-10 rounded-xl tilt-card"><h3 class="text-cyber-blue font-bold text-2xl mb-5 flex items-center gap-4"><span class="text-4xl">&#x2699;</span> Core Functions</h3><ul class="space-y-4 text-gray-200 text-xl"><li class="flex items-center gap-4"><div class="w-2 h-2 bg-cyber-blue rounded-full shadow-[0_0_8px_#00f3ff]"></div>Safeguards sensitive information</li><li class="flex items-center gap-4"><div class="w-2 h-2 bg-cyber-blue rounded-full shadow-[0_0_8px_#00f3ff]"></div>Prevents unauthorized access</li><li class="flex items-center gap-4"><div class="w-2 h-2 bg-cyber-blue rounded-full shadow-[0_0_8px_#00f3ff]"></div>Ensures system stability</li><li class="flex items-center gap-4"><div class="w-2 h-2 bg-cyber-blue rounded-full shadow-[0_0_8px_#00f3ff]"></div>Mitigates cyber threats</li></ul></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S2: CIA -->
+    <div class="slide" data-color="blue" data-section="basics">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10 text-center">CORE SECURITY PRINCIPLES</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-7">
+                <div class="grad-border p-8 text-center tilt-card"><div class="text-5xl mb-4">&#x1f512;</div><h3 class="font-display font-bold text-xl text-white mb-3">Confidentiality</h3><p class="text-lg text-gray-400">Data accessible only to authorized users.</p></div>
+                <div class="grad-border p-8 text-center tilt-card"><div class="text-5xl mb-4">&#x2705;</div><h3 class="font-display font-bold text-xl text-white mb-3">Integrity</h3><p class="text-lg text-gray-400">Maintaining accuracy and completeness of data.</p></div>
+                <div class="grad-border p-8 text-center tilt-card"><div class="text-5xl mb-4">&#x26a1;</div><h3 class="font-display font-bold text-xl text-white mb-3">Availability</h3><p class="text-lg text-gray-400">Guaranteeing reliable access to services.</p></div>
+                <div class="grad-border p-8 text-center tilt-card"><div class="text-5xl mb-4">&#x1f464;</div><h3 class="font-display font-bold text-xl text-white mb-3">Non-repudiation</h3><p class="text-lg text-gray-400">Proving the origin of an action.</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S3: USER AUTH -->
+    <div class="slide" data-color="purple" data-section="auth">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">USER AUTHENTICATION</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-7">
+                <div class="glass-panel p-8 rounded-xl tilt-card border-t-4 border-cyber-blue"><div class="text-cyber-blue text-4xl mb-3 font-display">01</div><h3 class="text-2xl font-bold text-white mb-3">Strong Passwords</h3><p class="text-gray-300 text-lg">Complex, unique credentials that resist brute-force and dictionary attacks.</p></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card border-t-4 border-cyber-purple"><div class="text-cyber-purple text-4xl mb-3 font-display">02</div><h3 class="text-2xl font-bold text-white mb-3">Biometrics</h3><p class="text-gray-300 text-lg">Fingerprint, facial recognition, and iris scans for physical verification.</p></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card border-t-4 border-green-400"><div class="text-green-400 text-4xl mb-3 font-display">03</div><h3 class="text-2xl font-bold text-white mb-3">MFA (2FA)</h3><p class="text-gray-300 text-lg">Multi-Factor adds layers: SMS, Token, Hardware Key.</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S4: PASSWORD STRENGTH ANALYZER -->
+    <div class="slide" data-color="purple" data-section="auth" id="slide-pwcrack">
+        <div class="slide-content max-w-4xl mx-auto">
+            <div class="text-center mb-5">
+                <span class="bg-cyber-purple/15 text-cyber-purple px-4 py-1 rounded text-xs font-bold tracking-[.2em] font-display">SIMULATION</span>
+                <h2 class="font-display text-2xl md:text-3xl font-bold text-white mt-2 tg-purple">PASSWORD STRENGTH ANALYZER</h2>
+                <p class="text-gray-400 text-base mt-1">Type a password to analyze its strength in real-time</p>
+            </div>
+            <div class="sim-panel p-6" id="pw-panel">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="flex flex-col gap-4">
+                        <div><div class="text-xs text-gray-500 font-mono mb-1.5 tracking-wider">ENTER PASSWORD</div><input type="text" id="pw-input" class="pw-input" placeholder="Type a password..." autocomplete="off" spellcheck="false"></div>
+                        <div><div class="flex justify-between items-center mb-1.5"><span class="text-xs text-gray-500 font-mono tracking-wider">STRENGTH</span><span id="pw-strength-label" class="font-display font-bold text-base">---</span></div><div class="w-full h-2.5 bg-gray-800 rounded-full overflow-hidden"><div id="pw-strength-bar" class="strength-bar w-0 bg-gray-600"></div></div></div>
+                        <div><div class="text-xs text-gray-500 font-mono mb-1 tracking-wider">ESTIMATED BRUTE-FORCE CRACK TIME</div><div id="pw-estimate" class="font-mono text-2xl text-gray-600">---</div></div>
+                        <button id="pw-crack-btn" class="sim-btn danger w-full text-xs disabled:opacity-30" onclick="startCrackFromInput()" disabled>SIMULATE BRUTE FORCE ATTACK</button>
+                        <div class="flex items-center gap-2 mt-1"><span class="text-xs text-gray-500 font-mono tracking-wider">STATUS</span><span class="text-gray-700">:</span><span id="pw-status" class="font-mono text-sm text-gray-600">AWAITING INPUT...</span></div>
+                        <div class="flex items-center gap-2"><span class="text-xs text-gray-500 font-mono tracking-wider">ELAPSED</span><span class="text-gray-700">:</span><span id="pw-time" class="font-mono text-xl text-cyber-blue tg-blue">0.000s</span></div>
+                    </div>
+                    <div><div class="text-xs text-gray-500 font-mono mb-2 tracking-wider">SECURITY CRITERIA CHECKLIST</div><div id="pw-details" class="space-y-2 bg-black/30 rounded-lg p-4 border border-gray-800 min-h-[200px]"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S5: AUTH VS AUTHZ -->
+    <div class="slide" data-color="purple" data-section="auth">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">AUTHENTICATION VS AUTHORIZATION</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                <div class="glass-panel p-10 rounded-xl tilt-card border-l-4 border-cyber-blue"><h3 class="text-3xl font-bold text-cyber-blue mb-4">Authentication</h3><p class="text-gray-200 text-2xl mb-5 font-mono">"Who are you?"</p><ul class="space-y-3 text-gray-300 text-lg"><li>&#x2022; Verifies identity (passwords, bio)</li><li>&#x2022; Occurs at initial login</li><li>&#x2022; Controls system access</li></ul></div>
+                <div class="glass-panel p-10 rounded-xl tilt-card border-l-4 border-cyber-purple"><h3 class="text-3xl font-bold text-cyber-purple mb-4">Authorization</h3><p class="text-gray-200 text-2xl mb-5 font-mono">"What can you do?"</p><ul class="space-y-3 text-gray-300 text-lg"><li>&#x2022; Determines permissions</li><li>&#x2022; Occurs after authentication</li><li>&#x2022; Enforces "Least Privilege"</li></ul></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S6: ACCESS CONTROL -->
+    <div class="slide" data-color="purple" data-section="access">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">ACCESS CONTROL MODELS</h2>
+            <div class="space-y-5">
+                <div class="glass-panel p-7 rounded-xl flex items-center justify-between group tilt-card cursor-default"><div><h3 class="text-2xl font-bold text-cyber-blue">DAC <span class="text-gray-500 font-normal text-lg">(Discretionary)</span></h3><p class="text-gray-300 text-lg">Owner decides who has access (e.g., Windows file sharing).</p></div><div class="text-4xl opacity-40 group-hover:opacity-100 transition-opacity">&#x1f465;</div></div>
+                <div class="glass-panel p-7 rounded-xl flex items-center justify-between group tilt-card cursor-default"><div><h3 class="text-2xl font-bold text-cyber-purple">MAC <span class="text-gray-500 font-normal text-lg">(Mandatory)</span></h3><p class="text-gray-300 text-lg">System-wide policy based on clearance levels (SELinux, Military).</p></div><div class="text-4xl opacity-40 group-hover:opacity-100 transition-opacity">&#x1f396;</div></div>
+                <div class="glass-panel p-7 rounded-xl flex items-center justify-between group tilt-card cursor-default"><div><h3 class="text-2xl font-bold text-green-400">RBAC <span class="text-gray-500 font-normal text-lg">(Role-Based)</span></h3><p class="text-gray-300 text-lg">Access assigned to roles, not individuals ("Admin", "User", "Guest").</p></div><div class="text-4xl opacity-40 group-hover:opacity-100 transition-opacity">&#x1f454;</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S7: MEMORY PROTECTION -->
+    <div class="slide" data-color="blue" data-section="memory">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-3">MEMORY PROTECTION</h2>
+            <p class="text-cyber-blue font-display text-lg mb-10 tracking-wider">PREVENTING SYSTEM CRASHES AND CODE INJECTION</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-7">
+                <div class="grad-border p-8 text-center tilt-card"><div class="text-5xl mb-4">&#x1f6a7;</div><h3 class="text-xl font-bold text-white mb-3">Isolation</h3><p class="text-gray-300 text-lg">Separating process memory so one crash doesn't take down the OS.</p></div>
+                <div class="grad-border p-8 text-center tilt-card"><div class="text-5xl mb-4">&#x1f3b2;</div><h3 class="text-xl font-bold text-white mb-3">ASLR</h3><p class="text-gray-300 text-lg">Randomizing memory layout to prevent predictable exploit targeting.</p></div>
+                <div class="grad-border p-8 text-center tilt-card"><div class="text-5xl mb-4">&#x1f6ab;</div><h3 class="text-xl font-bold text-white mb-3">DEP / NX</h3><p class="text-gray-300 text-lg">Marking memory as non-executable to stop shellcode injection.</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S8: BUFFER OVERFLOW -->
+    <div class="slide" data-color="blue" data-section="memory" id="slide-boverflow">
+        <div class="slide-content max-w-5xl mx-auto">
+            <div class="text-center mb-4">
+                <span class="bg-cyber-blue/15 text-cyber-blue px-4 py-1 rounded text-xs font-bold tracking-[.2em] font-display">SIMULATION</span>
+                <h2 class="font-display text-2xl md:text-3xl font-bold text-white mt-2 tg-blue">BUFFER OVERFLOW ATTACK</h2>
+                <p class="text-gray-400 text-base mt-1">Trigger the overflow, then enable ASLR mid-attack to defend the stack</p>
+            </div>
+            <div class="sim-panel p-5" id="bo-panel">
+                <canvas id="bo-canvas" style="width:100%;height:280px;display:block;border-radius:8px"></canvas>
+                <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
+                    <div class="flex gap-3 flex-wrap">
+                        <button id="bo-trigger-btn" class="sim-btn danger text-xs" onclick="triggerOverflow()">TRIGGER OVERFLOW</button>
+                        <button id="bo-aslr-btn" class="sim-btn green text-xs hidden" onclick="enableAslrDefense()">&#x1f6e1; ENABLE ASLR DEFENSE</button>
+                        <button class="sim-btn text-xs" onclick="resetOverflow()">RESET</button>
+                    </div>
+                    <div id="bo-status" class="font-mono text-base text-gray-500">STATUS: SECURE</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S9: FILE SYSTEM -->
+    <div class="slide" data-color="blue" data-section="fs">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">FILE SYSTEM SECURITY</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-7">
+                <div class="glass-panel p-8 rounded-xl tilt-card"><div class="w-14 h-14 bg-cyber-blue/15 rounded-xl flex items-center justify-center mb-5 text-cyber-blue"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg></div><h3 class="text-2xl font-bold text-white mb-3">Encryption</h3><p class="text-gray-300 text-lg">EFS/BitLocker encrypts files so they're unreadable if the drive is stolen.</p></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card"><div class="w-14 h-14 bg-cyber-purple/15 rounded-xl flex items-center justify-center mb-5 text-cyber-purple"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2v-5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></div><h3 class="text-2xl font-bold text-white mb-3">Permissions (ACLs)</h3><p class="text-gray-300 text-lg">Read, Write, Execute rights for specific users and groups.</p></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card"><div class="w-14 h-14 bg-green-500/15 rounded-xl flex items-center justify-center mb-5 text-green-500"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg></div><h3 class="text-2xl font-bold text-white mb-3">Auditing</h3><p class="text-gray-300 text-lg">Logs who accessed what and when for forensic analysis.</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S10: NETWORK SECURITY -->
+    <div class="slide" data-color="purple" data-section="network">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">NETWORK SECURITY INTEGRATION</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div class="glass-panel p-8 rounded-xl tilt-card"><h3 class="text-2xl font-bold text-cyber-blue mb-4">Firewalls</h3><p class="text-gray-200 text-lg mb-4">Filters traffic based on security rules.</p><div class="h-2 w-full bg-gray-800 rounded-full"><div class="h-2 bg-cyber-blue w-3/4 rounded-full shadow-[0_0_8px_#00f3ff]"></div></div></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card"><h3 class="text-2xl font-bold text-cyber-purple mb-4">VPNs & IPSec</h3><p class="text-gray-200 text-lg mb-4">Secure tunnels encrypting data in transit.</p><div class="h-2 w-full bg-gray-800 rounded-full"><div class="h-2 bg-cyber-purple w-3/4 rounded-full shadow-[0_0_8px_#bc13fe]"></div></div></div>
+            </div>
+            <div class="glass-panel p-7 rounded-xl border-l-4 border-cyber-red"><h4 class="font-bold text-white mb-3 text-xl">&#x26a0; Case Study: Unsecured Public Wi-Fi</h4><p class="text-gray-300 text-lg">Without VPN, data sent over public Wi-Fi is plaintext. Man-in-the-Middle attacks can intercept sessions, cookies, and passwords.</p></div>
+        </div>
+    </div>
+
+    <!-- S11: FIREWALL SIM -->
+    <div class="slide" data-color="purple" data-section="network" id="slide-firewall">
+        <div class="slide-content max-w-5xl mx-auto">
+            <div class="text-center mb-4">
+                <span class="bg-cyber-purple/15 text-cyber-purple px-4 py-1 rounded text-xs font-bold tracking-[.2em] font-display">SIMULATION</span>
+                <h2 class="font-display text-2xl md:text-3xl font-bold text-white mt-2 tg-purple">FIREWALL FILTERING</h2>
+                <p class="text-gray-400 text-base mt-1">Malicious (Red) packets blocked &#x2014; Safe (Green) traffic passes</p>
+            </div>
+            <div class="sim-panel p-5">
+                <div class="fw-scene" id="fw-scene"><div class="fw-wall"></div></div>
+                <div class="flex justify-between px-3 mt-3 font-mono text-base"><span class="text-cyber-red">BLOCKED: <span id="fw-blocked" class="font-bold">0</span></span><span class="text-green-400">ALLOWED: <span id="fw-allowed" class="font-bold">0</span></span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S12: ENCRYPTION -->
+    <div class="slide" data-color="purple" data-section="crypto">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">ENCRYPTION & PROTOCOLS</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="glass-panel p-8 rounded-xl tilt-card"><h3 class="text-2xl font-bold text-cyber-purple mb-4">Full Disk Encryption</h3><p class="text-gray-200 text-lg mb-5">TPM chips store keys, encrypting the entire drive.</p><div class="font-mono text-base text-green-400 bg-black/50 p-4 rounded border border-green-900/40">&gt; TPM_Secure_Boot: VERIFIED<br>&gt; Volume_Key: LOCKED</div></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card"><h3 class="text-2xl font-bold text-cyber-blue mb-4">Secure Protocols</h3><p class="text-gray-200 text-lg mb-5">TLS/SSL for HTTPS, SSH for remote admin.</p><div class="font-mono text-base text-cyber-blue bg-black/50 p-4 rounded border border-blue-900/40">&gt; Handshake: TLS 1.3<br>&gt; Cipher: AES-256-GCM</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S13: KERNEL (WITH ARROWS) -->
+    <div class="slide" data-color="blue" data-section="kernel">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-6">KERNEL-LEVEL PROTECTION</h2>
+            <div class="flex flex-col items-center">
+                <!-- Central Kernel Circle -->
+                <div class="grad-border rounded-full flex flex-col items-center justify-center mx-auto w-48 h-48 md:w-56 md:h-56 shrink-0">
+                    <h3 class="text-3xl md:text-4xl font-bold text-white mb-2">KERNEL</h3>
+                    <span class="text-sm text-cyber-blue tracking-[.3em] font-display">RING 0</span>
+                </div>
+
+                <!-- Animated Arrow SVG -->
+                <div class="kernel-arrows w-full max-w-4xl px-8" style="height:90px;margin:-5px 0 -5px 0;">
+                    <svg viewBox="0 0 100 35" preserveAspectRatio="none" style="width:100%;height:100%;overflow:visible;">
+                        <defs>
+                            <filter id="arrowGlow"><feGaussianBlur stdDeviation="1" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                        </defs>
+                        <!-- Left arrow -->
+                        <line x1="50" y1="2" x2="18" y2="30" stroke="#00f3ff" stroke-width="0.6" class="arrow-line" opacity="0.5" filter="url(#arrowGlow)"/>
+                        <polygon points="18,30 22,24 14,24" fill="#00f3ff" opacity="0.6" filter="url(#arrowGlow)"/>
+                        <!-- Center arrow -->
+                        <line x1="50" y1="2" x2="50" y2="30" stroke="#00f3ff" stroke-width="0.6" class="arrow-line" opacity="0.5" filter="url(#arrowGlow)"/>
+                        <polygon points="50,30 54,24 46,24" fill="#00f3ff" opacity="0.6" filter="url(#arrowGlow)"/>
+                        <!-- Right arrow -->
+                        <line x1="50" y1="2" x2="82" y2="30" stroke="#00f3ff" stroke-width="0.6" class="arrow-line" opacity="0.5" filter="url(#arrowGlow)"/>
+                        <polygon points="82,30 86,24 78,24" fill="#00f3ff" opacity="0.6" filter="url(#arrowGlow)"/>
+                    </svg>
+                </div>
+
+                <!-- Satellite Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-10 w-full max-w-4xl px-4">
+                    <div class="glass-panel p-8 rounded-xl text-center border border-gray-800 bg-black/60 tilt-card"><h4 class="text-cyber-blue font-bold text-2xl mb-3">Hypervisor</h4><p class="text-lg text-gray-400">Hardware Virtualization</p></div>
+                    <div class="glass-panel p-8 rounded-xl text-center border border-gray-800 bg-black/60 tilt-card"><h4 class="text-cyber-blue font-bold text-2xl mb-3">Secure Boot</h4><p class="text-lg text-gray-400">Chain of Trust</p></div>
+                    <div class="glass-panel p-8 rounded-xl text-center border border-gray-800 bg-black/60 tilt-card"><h4 class="text-cyber-blue font-bold text-2xl mb-3">Patching</h4><p class="text-lg text-gray-400">Kernel Security Updates</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S14: SANDBOXING -->
+    <div class="slide" data-color="purple" data-section="sandbox">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">SANDBOXING IN OS SECURITY</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div class="glass-panel p-9 rounded-xl tilt-card border-t-4 border-cyber-purple"><h3 class="text-2xl font-bold text-cyber-purple mb-4">What is a Sandbox?</h3><p class="text-gray-200 text-lg mb-4">An isolated execution space with restricted access to system resources.</p><ul class="space-y-2 text-gray-300 text-lg"><li>&#x2713; Restricts file system access</li><li>&#x2713; Limits network capabilities</li><li>&#x2713; Controls hardware device access</li><li>&#x2713; Isolates from other processes</li></ul></div>
+                <div class="glass-panel p-9 rounded-xl tilt-card border-t-4 border-green-500"><h3 class="text-2xl font-bold text-green-400 mb-4">Why Use Sandboxing?</h3><p class="text-gray-200 text-lg mb-4">Containment prevents compromised apps from damaging the system.</p><ul class="space-y-2 text-gray-300 text-lg"><li>&#x1f6e1; Contains exploits</li><li>&#x1f512; Minimal privilege isolation</li><li>&#x1f47e; Limits lateral movement</li><li>&#x1f9ea; Safe code testing</li></ul></div>
+            </div>
+            <div class="glass-panel p-7 rounded-xl bg-purple-900/5">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="border-l-2 border-cyber-blue pl-4"><p class="text-cyber-blue font-bold text-lg">Browser Sandboxing</p><p class="text-gray-400 text-base">Tabs run isolated from OS.</p></div>
+                    <div class="border-l-2 border-cyber-purple pl-4"><p class="text-cyber-purple font-bold text-lg">Mobile OS</p><p class="text-gray-400 text-base">iOS/Android sandbox each app.</p></div>
+                    <div class="border-l-2 border-green-500 pl-4"><p class="text-green-400 font-bold text-lg">Antivirus</p><p class="text-gray-400 text-base">Suspected files in isolated VMs.</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S15: THREATS -->
+    <div class="slide" data-color="red" data-section="threats">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-3">THE THREAT LANDSCAPE</h2>
+            <p class="text-gray-400 mb-10 text-lg">OS-Centric Malware Types</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-7">
+                <div class="glass-panel p-8 rounded-xl tilt-card bg-red-900/5 border border-red-500/20"><h3 class="text-2xl font-bold text-cyber-red mb-3">Rootkits</h3><p class="text-gray-300 text-lg">Hide existence. Kernel-mode rootkits modify OS system calls to become invisible.</p></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card bg-red-900/5 border border-red-500/20"><h3 class="text-2xl font-bold text-cyber-red mb-3">Ransomware</h3><p class="text-gray-300 text-lg">Encrypts files via OS APIs, deletes shadow copies to prevent recovery.</p></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card bg-red-900/5 border border-red-500/20"><h3 class="text-2xl font-bold text-cyber-red mb-3">Spyware</h3><p class="text-gray-300 text-lg">Hooks into OS input interrupts to steal credentials and keystrokes.</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S16: VIRTUALIZATION -->
+    <div class="slide" data-color="blue" data-section="virt">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">VIRTUALIZATION & CONTAINERS</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="glass-panel p-9 rounded-xl tilt-card"><h3 class="text-2xl font-bold text-cyber-blue mb-5">Hypervisor Security</h3><p class="text-gray-200 text-lg mb-5">The Hypervisor (VMM) manages virtual machines. If compromised, an attacker can escape the guest OS (VM Escape).</p><ul class="space-y-3 text-gray-300 text-lg"><li class="flex items-center gap-3"><div class="w-2 h-2 bg-cyber-blue rounded-full shadow-[0_0_6px_#00f3ff]"></div>Type 1 (Bare Metal): Higher security.</li><li class="flex items-center gap-3"><div class="w-2 h-2 bg-cyber-blue rounded-full shadow-[0_0_6px_#00f3ff]"></div>Type 2 (Hosted): Larger attack surface.</li></ul></div>
+                <div class="glass-panel p-9 rounded-xl tilt-card"><h3 class="text-2xl font-bold text-cyber-purple mb-5">Container Isolation</h3><p class="text-gray-200 text-lg mb-5">Containers share the host OS kernel. A kernel exploit can compromise the entire host system.</p><ul class="space-y-3 text-gray-300 text-lg"><li class="flex items-center gap-3"><div class="w-2 h-2 bg-cyber-purple rounded-full shadow-[0_0_6px_#bc13fe]"></div>Use Namespaces & Cgroups.</li><li class="flex items-center gap-3"><div class="w-2 h-2 bg-cyber-purple rounded-full shadow-[0_0_6px_#bc13fe]"></div>Run containers as non-root.</li></ul></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S17: AUDITING -->
+    <div class="slide" data-color="blue" data-section="audit">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">SECURITY AUDITING & LOGGING</h2>
+            <div class="glass-panel p-10 rounded-xl max-w-4xl mx-auto">
+                <div class="font-mono text-lg text-green-400 bg-black/50 p-5 rounded-lg border border-green-900/40 mb-8 overflow-x-auto leading-relaxed">&gt; [System] Audit Log: Success<br>&gt; [Security] User 'Admin' changed password.<br>&gt; [System] Failed login attempt: IP 192.168.1.50<br>&gt; [Alert] Integrity Violation: 'kernel32.dll' modified.</div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div><h3 class="text-2xl font-bold text-white mb-3">Why Audit?</h3><p class="text-gray-300 text-lg">Detect unauthorized activities, reconstruct events after a breach, meet compliance (GDPR, HIPAA).</p></div>
+                    <div><h3 class="text-2xl font-bold text-white mb-3">Key Targets</h3><p class="text-gray-300 text-lg">Login attempts, privilege use, file access, system restarts. SIEM tools aggregate logs.</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S18: EMERGING THREATS -->
+    <div class="slide" data-color="red" data-section="future">
+        <div class="slide-content">
+            <h2 class="font-display text-5xl md:text-6xl font-bold text-cyber-red mb-8 text-center tg-red">EMERGING THREATS</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-7">
+                <div class="glass-panel p-8 rounded-xl tilt-card bg-red-900/5 border border-red-500/20"><h3 class="text-2xl font-bold text-white mb-3">AI-Powered Attacks</h3><p class="text-gray-300 text-lg">Malware using ML to adapt to AV signatures.</p></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card bg-red-900/5 border border-red-500/20"><h3 class="text-2xl font-bold text-white mb-3">Quantum Computing</h3><p class="text-gray-300 text-lg">Potential to break RSA and ECC encryption.</p></div>
+                <div class="glass-panel p-8 rounded-xl tilt-card bg-red-900/5 border border-red-500/20"><h3 class="text-2xl font-bold text-white mb-3">IoT Botnets</h3><p class="text-gray-300 text-lg">Insecure devices as foot soldiers for DDoS.</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S19: FUTURE -->
+    <div class="slide" data-color="blue" data-section="future">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10">FUTURE OF OS SECURITY</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="grad-border p-8 tilt-card"><h3 class="text-2xl font-bold text-white mb-3">Hardware-Enforced Isolation</h3><p class="text-gray-300 text-lg">Intel SGX creating secure enclaves within main memory.</p></div>
+                <div class="grad-border p-8 tilt-card"><h3 class="text-2xl font-bold text-white mb-3">Zero Trust Architecture</h3><p class="text-gray-300 text-lg">Never trust, always verify. Continuous authentication for all resources.</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S20: BEST PRACTICES -->
+    <div class="slide" data-color="purple" data-section="practices">
+        <div class="slide-content">
+            <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-10 text-center">THE HUMAN ELEMENT</h2>
+            <div class="max-w-2xl mx-auto space-y-5">
+                <div class="glass-panel p-6 rounded-xl flex items-center gap-5 tilt-card"><div class="w-12 h-12 rounded-full bg-cyber-blue text-black font-bold flex items-center justify-center text-xl shrink-0">1</div><div><h4 class="font-bold text-xl text-white">Least Privilege</h4><p class="text-lg text-gray-400">Don't use admin accounts for daily tasks.</p></div></div>
+                <div class="glass-panel p-6 rounded-xl flex items-center gap-5 tilt-card"><div class="w-12 h-12 rounded-full bg-cyber-purple text-white font-bold flex items-center justify-center text-xl shrink-0">2</div><div><h4 class="font-bold text-xl text-white">Aggressive Patching</h4><p class="text-lg text-gray-400">Update OS and apps immediately.</p></div></div>
+                <div class="glass-panel p-6 rounded-xl flex items-center gap-5 tilt-card"><div class="w-12 h-12 rounded-full bg-green-500 text-black font-bold flex items-center justify-center text-xl shrink-0">3</div><div><h4 class="font-bold text-xl text-white">Situational Awareness</h4><p class="text-lg text-gray-400">Recognize phishing and social engineering.</p></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CASES HEADER -->
+    <div class="slide" data-color="red" data-section="cases"><div class="slide-content text-center h-full flex flex-col justify-center"><h2 class="font-display text-5xl md:text-6xl font-bold text-white mb-6">CRITICAL CASE STUDIES</h2><p class="text-2xl text-gray-400">Real-world OS security failures and recoveries.</p><div class="mt-10 flex justify-center gap-3"><span class="w-3 h-10 bg-cyber-red block rounded-sm"></span><span class="w-3 h-10 bg-cyber-blue block rounded-sm"></span><span class="w-3 h-10 bg-cyber-purple block rounded-sm"></span><span class="w-3 h-10 bg-green-500 block rounded-sm"></span></div></div></div>
+
+    <!-- CASES 1-5 -->
+    <div class="slide" data-color="red" data-section="cases"><div class="slide-content"><h2 class="font-display text-3xl font-bold text-white mb-5 border-b border-gray-800 pb-3">CASE 1: WANNACRY (2017)</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div class="glass-panel p-7 rounded-xl border-l-4 border-cyber-red bg-red-900/5 tilt-card"><h3 class="text-cyber-red font-bold mb-3 text-lg">&#x26a0; ROOT CAUSE</h3><p class="text-gray-200 text-lg leading-relaxed">Exploited "EternalBlue" in SMBv1 (MS17-010). Remote code execution without authentication on unpatched Windows.</p></div><div class="glass-panel p-7 rounded-xl border-l-4 border-green-500 bg-green-900/5 tilt-card"><h3 class="text-green-400 font-bold mb-3 text-lg">&#x2705; THE FIX</h3><p class="text-gray-200 text-lg leading-relaxed">Apply MS17-010 patch. Disable SMBv1. Network segmentation to prevent lateral movement.</p></div></div></div></div>
+    <div class="slide" data-color="purple" data-section="cases"><div class="slide-content"><h2 class="font-display text-3xl font-bold text-white mb-5 border-b border-gray-800 pb-3">CASE 2: SOLARWINDS (2020)</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div class="glass-panel p-7 rounded-xl border-l-4 border-cyber-red bg-red-900/5 tilt-card"><h3 class="text-cyber-red font-bold mb-3 text-lg">&#x26a0; ROOT CAUSE</h3><p class="text-gray-200 text-lg leading-relaxed">Compromised build system injected malicious code into legitimate updates, signed with stolen certificate.</p></div><div class="glass-panel p-7 rounded-xl border-l-4 border-green-500 bg-green-900/5 tilt-card"><h3 class="text-green-400 font-bold mb-3 text-lg">&#x2705; THE FIX</h3><p class="text-gray-200 text-lg leading-relaxed">Software Bill of Materials (SBOM). Enhanced DNS monitoring. Zero-trust architectures.</p></div></div></div></div>
+    <div class="slide" data-color="blue" data-section="cases"><div class="slide-content"><h2 class="font-display text-3xl font-bold text-white mb-5 border-b border-gray-800 pb-3">CASE 3: MELTDOWN & SPECTRE (2018)</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div class="glass-panel p-7 rounded-xl border-l-4 border-cyber-red bg-red-900/5 tilt-card"><h3 class="text-cyber-red font-bold mb-3 text-lg">&#x26a0; ROOT CAUSE</h3><p class="text-gray-200 text-lg leading-relaxed">Hardware flaw in speculative execution. OS memory isolation failed to prevent reading kernel memory from user space.</p></div><div class="glass-panel p-7 rounded-xl border-l-4 border-green-500 bg-green-900/5 tilt-card"><h3 class="text-green-400 font-bold mb-3 text-lg">&#x2705; THE FIX</h3><p class="text-gray-200 text-lg leading-relaxed">Kernel Page Table Isolation (KPTI). CPU microcode updates. Browser timer restrictions.</p></div></div></div></div>
+    <div class="slide" data-color="blue" data-section="cases"><div class="slide-content"><h2 class="font-display text-3xl font-bold text-white mb-5 border-b border-gray-800 pb-3">CASE 4: STUXNET (2010)</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div class="glass-panel p-7 rounded-xl border-l-4 border-cyber-red bg-red-900/5 tilt-card"><h3 class="text-cyber-red font-bold mb-3 text-lg">&#x26a0; ROOT CAUSE</h3><p class="text-gray-200 text-lg leading-relaxed">Spread via infected USB drives using four Windows zero-day exploits to reach air-gapped SCADA systems.</p></div><div class="glass-panel p-7 rounded-xl border-l-4 border-green-500 bg-green-900/5 tilt-card"><h3 class="text-green-400 font-bold mb-3 text-lg">&#x2705; THE FIX</h3><p class="text-gray-200 text-lg leading-relaxed">USB control policies. Application whitelisting. Air-gap verification. Patch management for legacy systems.</p></div></div></div></div>
+    <div class="slide" data-color="purple" data-section="cases"><div class="slide-content"><h2 class="font-display text-3xl font-bold text-white mb-5 border-b border-gray-800 pb-3">CASE 5: DIRTY COW (2016)</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div class="glass-panel p-7 rounded-xl border-l-4 border-cyber-red bg-red-900/5 tilt-card"><h3 class="text-cyber-red font-bold mb-3 text-lg">&#x26a0; ROOT CAUSE</h3><p class="text-gray-200 text-lg leading-relaxed">Race condition in Linux Kernel Copy-on-Write (CVE-2016-5195). Local user gained root access.</p></div><div class="glass-panel p-7 rounded-xl border-l-4 border-green-500 bg-green-900/5 tilt-card"><h3 class="text-green-400 font-bold mb-3 text-lg">&#x2705; THE FIX</h3><p class="text-gray-200 text-lg leading-relaxed">Immediate kernel patch. Kernel Live Patching (Ksplice) for fixes without rebooting.</p></div></div></div></div>
+
+    <!-- QUIZ HEADER -->
+    <div class="slide" data-color="blue" data-section="quiz"><div class="slide-content text-center h-full flex flex-col justify-center"><h2 class="font-display text-5xl md:text-6xl font-bold text-white mb-6">KNOWLEDGE CHECK</h2><p class="text-2xl text-gray-400 mb-3">Test your understanding of OS Security concepts.</p><div class="score-badge inline-block mt-5">5 QUESTIONS</div></div></div>
+
+    <!-- QUIZ 1-5 -->
+    <div class="slide" data-color="blue" data-section="quiz"><div class="slide-content max-w-5xl mx-auto"><div class="text-center mb-5"><span class="bg-cyber-blue/15 text-cyber-blue px-4 py-1 rounded text-xs font-bold tracking-[.2em] font-display">QUIZ 1/5</span><h2 class="font-display text-2xl font-bold text-white mt-3 tg-blue">Core Principles</h2></div><p class="text-center text-xl text-gray-100 font-bold mb-8">Which principle ensures systems are accessible to authorized users when needed?</p><div class="space-y-3" id="quiz-1"><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">Confidentiality prevents unauthorized disclosure.</div><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">Integrity ensures data is not modified.</div><div class="quiz-option" onclick="checkAnswer(this,true)" data-correct="true">Availability ensures access when needed.</div><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">Non-repudiation proves origin.</div></div></div></div>
+    <div class="slide" data-color="purple" data-section="quiz"><div class="slide-content max-w-5xl mx-auto"><div class="text-center mb-5"><span class="bg-cyber-purple/15 text-cyber-purple px-4 py-1 rounded text-xs font-bold tracking-[.2em] font-display">QUIZ 2/5</span><h2 class="font-display text-2xl font-bold text-white mt-3 tg-purple">Network Security</h2></div><p class="text-center text-xl text-gray-100 font-bold mb-8">What is the primary function of a Firewall?</p><div class="space-y-3" id="quiz-2"><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">VPN provides local file encryption.</div><div class="quiz-option" onclick="checkAnswer(this,true)" data-correct="true">Firewall filters network traffic based on rules.</div><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">ASLR is a network routing protocol.</div></div></div></div>
+    <div class="slide" data-color="blue" data-section="quiz"><div class="slide-content max-w-5xl mx-auto"><div class="text-center mb-5"><span class="bg-cyber-blue/15 text-cyber-blue px-4 py-1 rounded text-xs font-bold tracking-[.2em] font-display">QUIZ 3/5</span><h2 class="font-display text-2xl font-bold text-white mt-3 tg-blue">Access Control</h2></div><p class="text-center text-xl text-gray-100 font-bold mb-8">Which statement is true about RBAC?</p><div class="space-y-3" id="quiz-3"><div class="quiz-option" onclick="checkAnswer(this,true)" data-correct="true">RBAC assigns permissions to roles, not individuals.</div><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">DAC is always system-wide and mandatory.</div><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">MAC gives users full discretion over files.</div></div></div></div>
+    <div class="slide" data-color="purple" data-section="quiz"><div class="slide-content max-w-5xl mx-auto"><div class="text-center mb-5"><span class="bg-cyber-purple/15 text-cyber-purple px-4 py-1 rounded text-xs font-bold tracking-[.2em] font-display">QUIZ 4/5</span><h2 class="font-display text-2xl font-bold text-white mt-3 tg-purple">Memory Protection</h2></div><p class="text-center text-xl text-gray-100 font-bold mb-8">What does ASLR do?</p><div class="space-y-3" id="quiz-4"><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">DEP allows code execution in data sectors.</div><div class="quiz-option" onclick="checkAnswer(this,true)" data-correct="true">ASLR randomizes memory address locations.</div><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">Stack canaries are placed after the return address.</div></div></div></div>
+    <div class="slide" data-color="red" data-section="quiz"><div class="slide-content max-w-5xl mx-auto"><div class="text-center mb-5"><span class="bg-cyber-red/15 text-cyber-red px-4 py-1 rounded text-xs font-bold tracking-[.2em] font-display">QUIZ 5/5</span><h2 class="font-display text-2xl font-bold text-white mt-3 tg-red">Emerging Threats</h2></div><p class="text-center text-xl text-gray-100 font-bold mb-8">Which technology poses a threat to current encryption?</p><div class="space-y-3" id="quiz-5"><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">Traditional encryption is immune to future threats.</div><div class="quiz-option" onclick="checkAnswer(this,true)" data-correct="true">Quantum computing threatens current cryptographic standards.</div><div class="quiz-option" onclick="checkAnswer(this,false)" data-correct="false">IoT devices are inherently secure by design.</div></div></div></div>
+
+    <!-- KEY TAKEAWAYS -->
+    <div class="slide" data-color="blue" data-section="end"><div class="slide-content text-center h-full flex flex-col justify-center"><h2 class="font-display text-5xl md:text-6xl font-bold text-white mb-6">KEY TAKEAWAYS</h2><p class="text-2xl text-cyber-blue mb-12">Fortifying Your Digital World</p><div class="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto mb-12 text-left"><div class="p-5 border-l-2 border-cyber-blue bg-white/[.03] rounded-r-lg"><strong class="text-white text-lg">Defense in Depth:</strong><span class="text-gray-300 text-lg"> Multiple layers.</span></div><div class="p-5 border-l-2 border-cyber-purple bg-white/[.03] rounded-r-lg"><strong class="text-white text-lg">Least Privilege:</strong><span class="text-gray-300 text-lg"> Only necessary access.</span></div><div class="p-5 border-l-2 border-green-500 bg-white/[.03] rounded-r-lg"><strong class="text-white text-lg">Update Frequently:</strong><span class="text-gray-300 text-lg"> Patch before exploitation.</span></div><div class="p-5 border-l-2 border-yellow-500 bg-white/[.03] rounded-r-lg"><strong class="text-white text-lg">User Education:</strong><span class="text-gray-300 text-lg"> Technology can't fix habits.</span></div></div><div class="grad-border inline-block px-10 py-5"><p class="text-gray-200 font-display tracking-[.2em] text-xl relative z-10">SECURITY IS A PROCESS, NOT A PRODUCT</p></div></div></div>
+
+    <!-- THANK YOU -->
+    <div class="slide" data-color="blue" data-section="end"><div class="slide-content text-center h-full flex flex-col justify-center relative z-50"><h1 class="font-display text-7xl md:text-8xl font-black text-white mb-5 tg-blue glitch" data-text="THANK YOU">THANK YOU</h1><p class="text-2xl text-cyber-blue mb-10 font-display tracking-wider">MODULE COMPLETE</p><div class="score-badge inline-block mb-8 text-xl" id="final-score"></div><div><button class="nav-btn text-lg" id="endModuleBtn" onclick="endPresentation()">END MODULE</button></div></div></div>
+
+</div>
+
+<div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
+<div class="controls"><button class="nav-btn" onclick="prevSlide()">PREV</button><button class="nav-btn" onclick="nextSlide()">NEXT</button></div>
+
+<script>
+
+// ============ CONFIGURATION ============
+const CONFIG = {
+  colors: {
+    blue: '#00f3ff',
+    purple: '#bc13fe',
+    red: '#ff2a2a',
+    dark: '#050505',
+    green: '#10b981',
+    warning: '#eab308'
+  },
+  timing: {
+    scanDuration: 550,
+    transitionDuration: 2200,
+    hexRainCount: 30,
+    canvasScale: 2
+  },
+  threeD: {
+    wireframeOpacity: 0.14,
+    particleSize: 0.14,
+    gridOpacity: 0.07,
+    shapeOpacity: 0.16
+  },
+  simulation: {
+    passwordWeak: { time: 2500, interval: 30 },
+    passwordMed: { time: 6000, interval: 80 },
+    passwordStrong: { time: 8000, interval: 20 },
+    firewallProbability: 0.55,
+    firewallAnimDuration: 1800
+  }
+};
+
+// ============ AUDIO ENGINE ============
+let audioCtx = null;
+function getAudioContext() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    return audioCtx;
+}
+
+function playSound(type) {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    
+    const gainNode = ctx.createGain();
+    gainNode.connect(ctx.destination);
+    
+    if (type === 'trigger') {
+        // Rising alarm for attack start
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(100, now);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 0.5);
+        gainNode.gain.setValueAtTime(0.1, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        osc.connect(gainNode);
+        osc.start(now);
+        osc.stop(now + 0.5);
+    } else if (type === 'shield') {
+        // Digital shimmer for ASLR
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        osc1.type = 'sine';
+        osc2.type = 'triangle';
+        osc1.frequency.setValueAtTime(880, now);
+        osc2.frequency.setValueAtTime(1760, now);
+        gainNode.gain.setValueAtTime(0.1, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.6);
+        osc2.stop(now + 0.6);
+    } else if (type === 'warning') {
+        // Siren for warning box
+        const osc = ctx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.setValueAtTime(330, now + 0.15);
+        osc.frequency.setValueAtTime(440, now + 0.3);
+        osc.frequency.setValueAtTime(330, now + 0.45);
+        gainNode.gain.setValueAtTime(0.1, now);
+        osc.connect(gainNode);
+        osc.start(now);
+        osc.stop(now + 0.6);
+    } else if (type === 'crash') {
+        // Noise for stack smash
+        const bufferSize = ctx.sampleRate * 0.4;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 1000;
+        
+        gainNode.gain.setValueAtTime(0.15, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        
+        noise.connect(filter);
+        filter.connect(gainNode);
+        noise.start(now);
+        noise.stop(now + 0.4);
+    } else if (type === 'block') {
+        // Thud for blocked packet
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
+        gainNode.gain.setValueAtTime(0.2, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.connect(gainNode);
+        osc.start(now);
+        osc.stop(now + 0.1);
+    } else if (type === 'pass') {
+        // Blip for passed packet
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, now);
+        gainNode.gain.setValueAtTime(0.05, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+        osc.connect(gainNode);
+        osc.start(now);
+        osc.stop(now + 0.08);
+    }
+}
+
+
+// ============ GLOBAL STATE ============
+let currentSlide = 0;
+const slides = document.querySelectorAll('.slide');
+const progressBar = document.getElementById('progressBar');
+const scanLine = document.getElementById('scanLine');
+const mouseGlow = document.getElementById('mouseGlow');
+
+let animIntervals = [];
+let quizScore = 0;
+let quizAnswered = new Set();
+let pwCrackRunning = false;
+let boState = {};
+let boOverflowInterval = null;
+let mouseX = 0, mouseY = 0;
+
+window.addEventListener('load',()=>{setTimeout(()=>document.getElementById('loading-screen').classList.add('done'),2200)});
+(function(){const c=document.getElementById('hexRain');const ch='0123456789ABCDEF';for(let i=0;i<30;i++){const d=document.createElement('div');d.className='hex-col';d.style.left=Math.random()*100+'%';d.style.animationDuration=(8+Math.random()*16)+'s';d.style.animationDelay=Math.random()*10+'s';let t='';for(let j=0;j<35;j++)t+=ch[Math.floor(Math.random()*16)]+'\n';d.textContent=t;c.appendChild(d)}})();
+document.addEventListener('mousemove',e=>{mouseGlow.style.left=e.clientX+'px';mouseGlow.style.top=e.clientY+'px'});
+document.addEventListener('mousemove',e=>{document.querySelectorAll('.slide.active .tilt-card').forEach(card=>{const r=card.getBoundingClientRect();const x=e.clientX-r.left,y=e.clientY-r.top;if(x>=0&&x<=r.width&&y>=0&&y<=r.height){card.style.transform='perspective(800px) rotateX('+((y-r.height/2)/r.height)*-5+'deg) rotateY('+((x-r.width/2)/r.width)*5+'deg) scale(1.02)'}else{card.style.transform=''}})});
+
+const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x050505,0.016);const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);const renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));document.getElementById('canvas-container').appendChild(renderer.domElement);
+const geo=new THREE.IcosahedronGeometry(10,2);const mat=new THREE.MeshBasicMaterial({color:0x00f3ff,wireframe:true,transparent:true,opacity:0.14});const sphere=new THREE.Mesh(geo,mat);scene.add(sphere);
+const grid=new THREE.GridHelper(120,60,0x00f3ff,0x0a0a1a);grid.position.y=-16;grid.material.opacity=0.07;grid.material.transparent=true;scene.add(grid);
+const pGeo=new THREE.BufferGeometry();const pCount=600;const pos=new Float32Array(pCount*3);for(let i=0;i<pCount*3;i++)pos[i]=(Math.random()-.5)*65;pGeo.setAttribute('position',new THREE.BufferAttribute(pos,3));const pMat=new THREE.PointsMaterial({size:0.14,color:0xffffff,transparent:true,opacity:0.5});const particles=new THREE.Points(pGeo,pMat);scene.add(particles);
+const shapes=[];const sGeos=[new THREE.OctahedronGeometry(0.6),new THREE.TetrahedronGeometry(0.6),new THREE.BoxGeometry(0.5,0.5,0.5)];for(let i=0;i<10;i++){const sg=sGeos[i%3];const sm=new THREE.MeshBasicMaterial({color:0x00f3ff,wireframe:true,transparent:true,opacity:0.16});const m=new THREE.Mesh(sg,sm);m.position.set((Math.random()-.5)*35,(Math.random()-.5)*22,(Math.random()-.5)*22);m.userData.rs={x:(Math.random()-.5)*.012,y:(Math.random()-.5)*.012};scene.add(m);shapes.push(m)}
+camera.position.z=22;let mx=0,my=0;document.addEventListener('mousemove',e=>{mx=(e.clientX/innerWidth-.5)*2;my=(e.clientY/innerHeight-.5)*2});
+function update3DColor(t){let c=0x00f3ff;if(t==='purple')c=0xbc13fe;if(t==='red')c=0xff2a2a;mat.color.setHex(c);grid.material.color.setHex(c);shapes.forEach(s=>s.material.color.setHex(c))}
+function animateThree(){requestAnimationFrame(animateThree);sphere.rotation.x+=.0004;sphere.rotation.y+=.0008;particles.rotation.y-=.00015;shapes.forEach(s=>{s.rotation.x+=s.userData.rs.x;s.rotation.y+=s.userData.rs.y});camera.position.x+=(mx*2.5-camera.position.x)*.025;camera.position.y+=(-my*1.8-camera.position.y)*.025;camera.lookAt(0,0,0);renderer.render(scene,camera)}animateThree();
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+
+const sideNav=document.getElementById('sideNav');let prevSec='';slides.forEach((_,i)=>{const d=document.createElement('div');const sec=slides[i].dataset.section;const isStart=sec&&sec!==prevSec&&i>0;d.className='dot'+(isStart?' sec':'');d.onclick=()=>{currentSlide=i;updateSlide()};sideNav.appendChild(d);if(sec)prevSec=sec});
+function updateSideNav(){sideNav.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('active',i===currentSlide))}
+
+function updateSlide(){cleanupAnimations();document.querySelectorAll('.warn-box').forEach(w=>w.remove());slides.forEach((s,i)=>{s.classList.remove('active');if(i===currentSlide){s.classList.add('active');const t=s.dataset.color;update3DColor(t);mouseGlow.className='mouse-glow '+t;if(s.id==='slide-firewall')initFirewall();if(s.id==='slide-pwcrack')initPwCrack();if(s.id==='slide-boverflow')initBufferOverflow();if(i===slides.length-1)document.getElementById('final-score').textContent='QUIZ SCORE: '+quizScore+'/5'}});progressBar.style.width=((currentSlide+1)/slides.length*100)+'%';updateSideNav()}
+function triggerScan(){const t=slides[currentSlide].dataset.color;scanLine.className='scan-line '+t;void scanLine.offsetWidth;scanLine.classList.add('active');setTimeout(()=>scanLine.classList.remove('active'),550)}
+function nextSlide(){if(currentSlide<slides.length-1){currentSlide++;triggerScan();updateSlide()}}
+function prevSlide(){if(currentSlide>0){currentSlide--;triggerScan();updateSlide()}}
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='ArrowRight'||e.key===' '||e.key==='Enter'){e.preventDefault();nextSlide()}if(e.key==='ArrowLeft')prevSlide()});
+function cleanupAnimations(){animIntervals.forEach(id=>clearInterval(id));animIntervals=[];if(boOverflowInterval){clearInterval(boOverflowInterval);boOverflowInterval=null}}
+
+function initFirewall(){const sc=document.getElementById('fw-scene');const bEl=document.getElementById('fw-blocked');const aEl=document.getElementById('fw-allowed');let bc=0,ac=0;sc.querySelectorAll('.fw-packet').forEach(p=>p.remove());const w=sc.offsetWidth;const sx=w/2;const id=setInterval(()=>{const p=document.createElement('div');p.className='fw-packet';const bad=Math.random()>.55;const col=bad?'#ff2a2a':'#10b981';p.style.cssText='background:'+col+';box-shadow:0 0 10px '+col+';top:'+(Math.floor(Math.random()*82)+6)+'%;left:10px;';sc.appendChild(p);const ex=bad?sx-14:w+40;const an=p.animate([{transform:'translateX(0)'},{transform:'translateX('+ex+'px)'}],{duration:1800,easing:'linear'});an.onfinish=()=>{p.remove();if(bad){bc++;bEl.textContent=bc;playSound('block');for(let i=0;i<5;i++){const sp=document.createElement('div');sp.style.cssText='position:absolute;width:5px;height:5px;border-radius:50%;background:#ff2a2a;left:'+sx+'px;top:'+p.style.top+';z-index:3;pointer-events:none;box-shadow:0 0 6px #ff2a2a';sc.appendChild(sp);const sa=sp.animate([{transform:'translate(0,0) scale(1)',opacity:1},{transform:'translate('+((Math.random()-.5)*50)+'px,'+((Math.random()-.5)*50)+'px) scale(0)',opacity:0}],{duration:450});sa.onfinish=()=>sp.remove()}}else{ac++;aEl.textContent=ac;playSound('pass')}}},320);animIntervals.push(id)}
+
+function initPwCrack(){pwCrackRunning=false;const inp=document.getElementById('pw-input');inp.value='';inp.disabled=false;document.getElementById('pw-strength-label').textContent='---';document.getElementById('pw-strength-label').style.color='#6b7280';document.getElementById('pw-strength-bar').style.width='0%';document.getElementById('pw-strength-bar').style.background='#6b7280';document.getElementById('pw-details').innerHTML='';document.getElementById('pw-estimate').textContent='---';document.getElementById('pw-estimate').style.color='#6b7280';document.getElementById('pw-time').textContent='0.000s';document.getElementById('pw-time').className='font-mono text-xl text-cyber-blue tg-blue';document.getElementById('pw-status').textContent='AWAITING INPUT...';document.getElementById('pw-status').className='font-mono text-sm text-gray-600';document.getElementById('pw-crack-btn').disabled=true;document.getElementById('pw-panel').style.borderColor='rgba(0,243,255,.12)';const newInp=inp.cloneNode(true);inp.parentNode.replaceChild(newInp,inp);newInp.addEventListener('input',onPasswordInput)}
+
+function onPasswordInput(e){const pw=e.target.value;const labelEl=document.getElementById('pw-strength-label');const barEl=document.getElementById('pw-strength-bar');const detailsEl=document.getElementById('pw-details');const estimateEl=document.getElementById('pw-estimate');const crackBtn=document.getElementById('pw-crack-btn');if(!pw){labelEl.textContent='---';labelEl.style.color='#6b7280';barEl.style.width='0%';barEl.style.background='#6b7280';detailsEl.innerHTML='';estimateEl.textContent='---';estimateEl.style.color='#6b7280';crackBtn.disabled=true;return}crackBtn.disabled=false;const result=evaluatePassword(pw);labelEl.textContent=result.level;labelEl.style.color=result.color;barEl.style.width=result.pct+'%';barEl.style.background=result.color;estimateEl.textContent=result.time;estimateEl.style.color=result.color;let html='';const checks=[{label:'Length: '+pw.length+' chars',ok:pw.length>=8,color:pw.length>=8?'#10b981':'#ef4444'},{label:'Uppercase letters',ok:/[A-Z]/.test(pw),color:/[A-Z]/.test(pw)?'#10b981':'#ef4444'},{label:'Lowercase letters',ok:/[a-z]/.test(pw),color:/[a-z]/.test(pw)?'#10b981':'#ef4444'},{label:'Numbers',ok:/[0-9]/.test(pw),color:/[0-9]/.test(pw)?'#10b981':'#ef4444'},{label:'Special characters',ok:/[^a-zA-Z0-9]/.test(pw),color:/[^a-zA-Z0-9]/.test(pw)?'#10b981':'#ef4444'},{label:'No repeated chars',ok:!/(.)\1{2,}/.test(pw),color:!/(.)\1{2,}/.test(pw)?'#10b981':'#eab308'},{label:'Not common pattern',ok:!/^(123|abc|qwerty|password|admin)/i.test(pw),color:!/^(123|abc|qwerty|password|admin)/i.test(pw)?'#10b981':'#ef4444'}];checks.forEach(ch=>{html+='<div class="flex items-center gap-3 text-base"><span style="color:'+ch.color+';font-size:1.2rem">'+(ch.ok?'\u2713':'\u2715')+'</span><span class="text-gray-300">'+ch.label+'</span></div>'});detailsEl.innerHTML=html}
+
+function evaluatePassword(pw){let score=0;if(pw.length>=6)score++;if(pw.length>=10)score++;if(pw.length>=14)score++;if(/[a-z]/.test(pw))score++;if(/[A-Z]/.test(pw))score++;if(/[0-9]/.test(pw))score++;if(/[^a-zA-Z0-9]/.test(pw))score++;if(/(.)\1{2,}/.test(pw))score--;if(/^(123|abc|qwerty|password|admin)/i.test(pw))score-=2;if(score<=2)return{level:'WEAK',color:'#ef4444',pct:25,time:'~0.2 seconds'};if(score<=4)return{level:'MEDIUM',color:'#eab308',pct:55,time:'~3 hours'};return{level:'STRONG',color:'#10b981',pct:100,time:'~47,000+ years'}}
+
+function startCrackFromInput(){const inp=document.getElementById('pw-input');const pw=inp.value;if(!pw||pwCrackRunning)return;pwCrackRunning=true;document.getElementById('pw-crack-btn').disabled=true;inp.disabled=true;const sEl=document.getElementById('pw-status');const tmEl=document.getElementById('pw-time');const cs='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';const st=performance.now();let ac=0;const result=evaluatePassword(pw);const weak=result.level==='WEAK',med=result.level==='MEDIUM';const iv=weak?30:med?80:20;const mt=weak?2500:med?6000:8000;sEl.textContent='BRUTE FORCING...';sEl.className='font-mono text-sm text-yellow-400 animate-pulse';const id=setInterval(()=>{const el=performance.now()-st;tmEl.textContent=(el/1000).toFixed(3)+'s';ac++;if(el>mt){clearInterval(id);if(weak||med){sEl.textContent='\u26a0 PASSWORD CRACKED!';sEl.className='font-mono text-sm text-cyber-red font-bold';tmEl.className='font-mono text-xl text-cyber-red tg-red';document.getElementById('pw-panel').style.borderColor='rgba(255,42,42,.4)'}else{sEl.textContent='\u2713 COMPUTATIONALLY INFEASIBLE (47,000+ years)';sEl.className='font-mono text-sm text-green-400 font-bold';tmEl.className='font-mono text-xl text-green-400';document.getElementById('pw-panel').style.borderColor='rgba(16,185,129,.3)'}pwCrackRunning=false;inp.disabled=false}},iv);animIntervals.push(id)}
+
+const boSec=[{l:'PARAMETERS',c:'#6b7280',r:2},{l:'SAVED EBP',c:'#9ca3af',r:2},{l:'RETURN ADDR',c:'#ef4444',r:2},{l:'CANARY',c:'#eab308',r:1},{l:'BUFFER',c:'#22c55e',r:5},{l:'LOCAL VARS',c:'#3b82f6',r:3}];
+function initBufferOverflow(){const cv=document.getElementById('bo-canvas');const ctx=cv.getContext('2d');const dpr=Math.min(devicePixelRatio,2);cv.width=cv.offsetWidth*dpr;cv.height=cv.offsetHeight*dpr;ctx.scale(dpr,dpr);boState={ctx,w:cv.offsetWidth,h:cv.offsetHeight,oRow:-1,crashed:false,anim:false,aslrProtected:false};drawBO();document.getElementById('bo-trigger-btn').classList.remove('hidden');document.getElementById('bo-trigger-btn').disabled=false;document.getElementById('bo-aslr-btn').classList.add('hidden');document.getElementById('bo-status').innerHTML='<span class="text-gray-500 text-base">STATUS: SECURE</span>';document.getElementById('bo-panel').style.borderColor='rgba(0,243,255,.12)';document.getElementById('bo-panel').classList.remove('aslr-shield-anim');document.querySelectorAll('#bo-panel .warn-box').forEach(w=>w.remove())}
+function drawBO(){const{ctx,w,h,oRow,crashed,aslrProtected}=boState;ctx.clearRect(0,0,w,h);const cH=Math.floor((h-35)/15);const cW=Math.floor((w-90)/8);const sX=80;let row=0;boSec.forEach(sec=>{ctx.fillStyle=sec.c;ctx.font='11px Orbitron';ctx.textAlign='right';ctx.fillText(sec.l,sX-10,row*cH+sec.r*cH/2+5);for(let r=0;r<sec.r;r++){for(let c=0;c<8;c++){let bg=sec.c+'18',bd=sec.c+'60',tc=sec.c+'40';if(aslrProtected&&(sec.l==='CANARY'||sec.l==='RETURN ADDR'||sec.l==='SAVED EBP')){bg='rgba(16,185,129,0.15)';bd='#10b981';tc='rgba(16,185,129,0.6)'}if(!aslrProtected&&oRow>=0&&row<=oRow&&(sec.l==='CANARY'||sec.l==='RETURN ADDR'||sec.l==='SAVED EBP'||sec.l==='PARAMETERS')){bg='#ef444440';bd='#ef4444';tc='#ef4444'}if(!aslrProtected&&oRow>=0&&row<=oRow&&sec.l==='BUFFER'&&r>=3){bg='#ef444430';bd='#ef444480';tc='#ef444460'}const x=sX+c*cW,y=row*cH;ctx.fillStyle=bg;ctx.fillRect(x,y,cW-1,cH-1);ctx.strokeStyle=bd;ctx.strokeRect(x,y,cW-1,cH-1);ctx.fillStyle=tc;ctx.font='9px Share Tech Mono';ctx.textAlign='center';ctx.fillText((Math.random()*255|0).toString(16).padStart(2,'0').toUpperCase(),x+cW/2-.5,y+cH/2+3)}row++}});ctx.textAlign='left';if(aslrProtected){ctx.fillStyle='rgba(16,185,129,0.06)';ctx.fillRect(0,0,w,h);ctx.fillStyle='#10b981';ctx.font='bold 22px Orbitron';ctx.textAlign='center';ctx.shadowColor='#10b981';ctx.shadowBlur=30;ctx.fillText('ASLR ACTIVE \u2014 STACK PROTECTED',w/2,h/2);ctx.shadowBlur=0;ctx.textAlign='left';return}if(crashed){ctx.fillStyle='rgba(255,42,42,0.15)';ctx.fillRect(0,0,w,h);ctx.fillStyle='#ff2a2a';ctx.font='bold 24px Orbitron';ctx.textAlign='center';ctx.shadowColor='#ff2a2a';ctx.shadowBlur=25;ctx.fillText('STACK SMASHED!',w/2,h/2);ctx.shadowBlur=0;ctx.textAlign='left'}}
+function showAslrWarningBox(){document.querySelectorAll('#bo-panel .warn-box').forEach(w=>w.remove());const panel=document.getElementById('bo-panel');const box=document.createElement('div');box.className='warn-box';box.innerHTML='<div class="warn-box-inner"><div style="font-size:3rem;margin-bottom:.5rem;color:#eab308;text-shadow:0 0 20px rgba(234,179,8,.5)">&#x26a0;</div><h3 style="font-family:Orbitron,sans-serif;font-size:1.1rem;font-weight:700;color:#eab308;margin-bottom:.5rem">ATTACK BLOCKED BY ASLR</h3><p style="font-size:1rem;color:#d1d5db;line-height:1.5">Buffer overflow trigger <strong style="color:#ef4444">cannot be activated</strong> because ASLR (Address Space Layout Randomization) is currently <strong style="color:#10b981">ACTIVE</strong>. Memory addresses are randomized, making targeted overflow attacks ineffective.</p><button onclick="this.closest(\'.warn-box\').remove()" style="margin-top:1rem;background:rgba(234,179,8,.15);border:1px solid #eab308;color:#eab308;padding:.4rem 1.5rem;border-radius:6px;cursor:pointer;font-family:Orbitron,sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;transition:all .2s" onmouseover="this.style.background=\'#eab308\';this.style.color=\'#000\'" onmouseout="this.style.background=\'rgba(234,179,8,.15)\';this.style.color=\'#eab308\'">DISMISS</button></div>';panel.appendChild(box);playSound('warning');}
+function triggerOverflow(){
+    if(boState.aslrProtected){showAslrWarningBox();return}
+    if(boState.anim||boState.crashed)return;
+    playSound('trigger');
+    boState.anim=true;boState.oRow=7;document.getElementById('bo-trigger-btn').disabled=true;document.getElementById('bo-aslr-btn').classList.remove('hidden');document.getElementById('bo-status').innerHTML='<span class="text-yellow-400 text-base animate-pulse">\u26a0 BUFFER OVERFLOW IN PROGRESS... CLICK ASLR TO DEFEND!</span>';document.getElementById('bo-panel').style.borderColor='rgba(255,42,42,.4)';boOverflowInterval=setInterval(()=>{boState.oRow--;drawBO();if(boState.oRow<=2){clearInterval(boOverflowInterval);boOverflowInterval=null;boState.crashed=true;boState.anim=false;drawBO();document.getElementById('bo-trigger-btn').disabled=false;document.getElementById('bo-aslr-btn').classList.add('hidden');document.getElementById('bo-status').innerHTML='<span class="text-cyber-red font-bold text-base">\u2715 RETURN ADDRESS OVERWRITTEN \u2014 EXECUTION HIJACKED</span>';playSound('crash');}},400)
+}
+function enableAslrDefense(){
+    if(!boState.anim)return;
+    playSound('shield');
+    if(boOverflowInterval){clearInterval(boOverflowInterval);boOverflowInterval=null}boState.anim=false;boState.oRow=-1;boState.crashed=false;boState.aslrProtected=true;drawBO();document.getElementById('bo-trigger-btn').disabled=false;document.getElementById('bo-aslr-btn').classList.add('hidden');document.getElementById('bo-status').innerHTML='<span class="text-green-400 font-bold text-base">\u2713 ASLR DEFENSE ACTIVATED! Stack addresses randomized \u2014 overflow neutralized.</span>';document.getElementById('bo-panel').style.borderColor='rgba(16,185,129,.4)';document.getElementById('bo-panel').classList.add('aslr-shield-anim')
+}
+function resetOverflow(){if(boOverflowInterval){clearInterval(boOverflowInterval);boOverflowInterval=null}boState={ctx:boState.ctx,w:boState.w,h:boState.h,oRow:-1,crashed:false,anim:false,aslrProtected:false};drawBO();document.getElementById('bo-trigger-btn').classList.remove('hidden');document.getElementById('bo-trigger-btn').disabled=false;document.getElementById('bo-aslr-btn').classList.add('hidden');document.getElementById('bo-status').innerHTML='<span class="text-gray-500 text-base">STATUS: SECURE</span>';document.getElementById('bo-panel').style.borderColor='rgba(0,243,255,.12)';document.getElementById('bo-panel').classList.remove('aslr-shield-anim');document.querySelectorAll('#bo-panel .warn-box').forEach(w=>w.remove())}
+
+function checkAnswer(el,isCorrect){const qId=el.parentElement.id;if(quizAnswered.has(qId))return;quizAnswered.add(qId);const opts=Array.from(el.parentElement.children);opts.forEach(c=>{c.style.pointerEvents='none';c.style.opacity='.35'});if(isCorrect){el.classList.add('correct');el.style.opacity='1';quizScore++}else{el.classList.add('wrong');el.style.opacity='1';const cor=opts.find(o=>o.dataset.correct==='true');if(cor){cor.classList.add('correct');cor.style.opacity='1'}}}
+function endPresentation(){
+    document.querySelector('.controls').classList.add('hidden');
+    document.querySelector('.progress-container').classList.add('hidden');
+    document.querySelector('.side-nav').classList.add('hidden');
+    const endBtn = document.getElementById('endModuleBtn');
+    if(endBtn) endBtn.classList.add('hidden');
+}
+updateSlide();
+</script>
+</body>
+</html>
